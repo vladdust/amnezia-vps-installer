@@ -9,9 +9,9 @@ import threading
 import time
 
 MODULE_KEY = "l"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 TITLE = "Сроки доступа и неактивные конфиги"
-DESCRIPTION = "Временные клиенты, продление доступа и проверка неактивных конфигов."
+DESCRIPTION = "Сроки доступа клиентов, продление и проверка неактивных конфигов."
 BUTTON = "⏳ Доступы"
 STATE_PATH = "/var/lib/vpn-bot/modules/client-lifecycle/state.json"
 STALE_AFTER = 30 * 86400
@@ -130,7 +130,7 @@ def _expiry_view(api):
         if expires and pub in by_pub:
             entries.append((int(expires), by_pub[pub], record))
     entries.sort(key=lambda item: item[0])
-    lines = ["<b>⏳ Временный доступ</b>", ""]
+    lines = ["<b>⏳ Сроки доступа</b>", ""]
     keyboard = []
     for expires, client, record in entries[:20]:
         status = " · истёк" if expires <= now else ""
@@ -139,12 +139,85 @@ def _expiry_view(api):
         lines.append("• <b>%s</b> — до %s%s" % (api["e"](client["name"]), _date(expires), status))
         keyboard.append([api["btn"]("↗ Продлить: " + client["name"][:26], "mod:l:extend:" + client["pub"])])
     if not entries:
-        lines.append("Временных доступов пока нет.")
+        lines.append("Доступов со сроком пока нет.")
     keyboard.extend([
+        [api["btn"]("➕ Назначить срок существующему", "mod:l:assign:0")],
         [api["btn"]("➕ Новый клиент", "add")],
         [api["btn"]("🔄 Обновить", "mod:l:expiring"), api["btn"]("⬅️ Клиенты", "clients")],
     ])
     return "\n".join(lines)[:3900], keyboard
+
+
+def _assign_view(api, page=0):
+    clients, records = _tracked_clients(api)
+    permanent = [client for client in clients
+                 if not records.get(client["pub"], {}).get("expires_at")]
+    permanent.sort(key=lambda client: (client.get("name", "").casefold(), client["pub"]))
+    page_size = 10
+    pages = max(1, (len(permanent) + page_size - 1) // page_size)
+    page = max(0, min(page, pages - 1))
+    start = page * page_size
+    selected = permanent[start:start + page_size]
+    lines = ["<b>➕ Назначить срок существующему клиенту</b>",
+             "Выберите постоянный ключ. После назначения срока доступ отключится автоматически, конфиг сохранится.", ""]
+    keyboard = []
+    for client in selected:
+        status = " · отключён" if api["is_blocked"](client["pub"]) else ""
+        lines.append("• <b>%s</b>%s" % (api["e"](client["name"]), status))
+        keyboard.append([api["btn"](("⛔ " if status else "👤 ") + client["name"][:36],
+                                     "mod:l:choose:" + client["pub"])])
+    if not permanent:
+        lines.append("Все существующие ключи уже имеют срок доступа.")
+    if pages > 1:
+        controls = []
+        if page > 0:
+            controls.append(api["btn"]("⬅️", "mod:l:assign:%d" % (page - 1)))
+        controls.append(api["btn"]("%d/%d" % (page + 1, pages), "mod:l:assign:%d" % page))
+        if page + 1 < pages:
+            controls.append(api["btn"]("➡️", "mod:l:assign:%d" % (page + 1)))
+        keyboard.append(controls)
+    keyboard.extend([
+        [api["btn"]("↩️ К срокам", "mod:l:expiring")],
+        [api["btn"]("⬅️ Клиенты", "clients")],
+    ])
+    return "\n".join(lines)[:3900], keyboard
+
+
+def _assign_days_keyboard(api, pub):
+    return [[api["btn"]("%d дн." % days, "mod:l:ad:%s:%d" % (pub, days))
+             for days in GUEST_DAYS[:3]],
+            [api["btn"]("%d дн." % days, "mod:l:ad:%s:%d" % (pub, days))
+             for days in GUEST_DAYS[3:]],
+            [api["btn"]("⬅️ К списку", "mod:l:assign:0")]]
+
+
+def _assign_access(api, chat, mid, pub, days):
+    if days not in GUEST_DAYS:
+        api["edit"](chat, mid, "Выбран неверный срок.",
+                    [[api["btn"]("↩️ К списку", "mod:l:assign:0")]])
+        return
+    clients, records = _tracked_clients(api)
+    client = api["find_client"](pub)
+    if not client:
+        api["edit"](chat, mid, "Клиент уже удалён.",
+                    [[api["btn"]("↩️ К списку", "mod:l:assign:0")]])
+        return
+    with _lock:
+        record = _state.setdefault("clients", {}).get(client["pub"])
+        if not record or record.get("expires_at"):
+            api["edit"](chat, mid, "У этого клиента срок уже назначен. Откройте список сроков, чтобы продлить его.",
+                        [[api["btn"]("↩️ К срокам", "mod:l:expiring")]])
+            return
+        expires = int(time.time()) + days * 86400
+        record["expires_at"] = expires
+        record["disabled_by_module"] = False
+        record.pop("expired_at", None)
+        _save_state()
+    api["edit"](chat, mid,
+                "✅ Для <b>%s</b> установлен срок %d дн. Доступ отключится %s, конфиг сохранится." %
+                (api["e"](client["name"]), days, _date(expires)),
+                [[api["btn"]("⏳ Сроки доступа", "mod:l:expiring"),
+                  api["btn"]("👤 Клиент", "c:" + pub)]])
 
 
 def _unused_view(api, candidates=None):
@@ -171,9 +244,10 @@ def _module_home(api):
     candidates = _unused(api)
     text = ("<b>⏳ Доступы</b>\n\n"
             "Клиентов под наблюдением: %d\n"
-            "Временных доступов: %d, срок истёк: %d\n"
+            "Доступов со сроком: %d, срок истёк: %d\n"
             "Кандидатов на проверку: %d" % (len(clients), len(guests), expired, len(candidates)))
     keyboard = [[api["btn"]("➕ Новый клиент", "add")],
+                [api["btn"]("🕒 Назначить срок существующему", "mod:l:assign:0")],
                 [api["btn"]("📅 Сроки доступа", "mod:l:expiring")],
                 [api["btn"]("🔎 Неактивные", "mod:l:unused")],
                 [api["btn"]("⬅️ Клиенты", "clients")]]
@@ -259,7 +333,7 @@ def _extend_access(api, chat, mid, pub, days):
     with _lock:
         record = _state.setdefault("clients", {}).get(client["pub"])
         if not record or not record.get("expires_at"):
-            api["edit"](chat, mid, "У этого клиента нет временного срока доступа.",
+            api["edit"](chat, mid, "У клиента не задан срок доступа.",
                         [[api["btn"]("↩️ К срокам", "mod:l:expiring")]])
             return
         expires = max(int(time.time()), int(record["expires_at"])) + days * 86400
@@ -332,6 +406,33 @@ def handle_callback(api, callback, action):
         show("Создание отменено.", [[api["btn"]("👥 Клиенты", "clients")]])
     elif action == "expiring":
         show(*_expiry_view(api))
+    elif action.startswith("assign:"):
+        value = action[7:]
+        if not value.isdigit():
+            show("Не удалось открыть список клиентов.", [[api["btn"]("⬅️ Клиенты", "clients")]])
+        else:
+            show(*_assign_view(api, int(value)))
+    elif action.startswith("choose:"):
+        pub = action[7:]
+        client = api["find_client"](pub)
+        if not client:
+            show("Клиент уже удалён.", [[api["btn"]("↩️ К списку", "mod:l:assign:0")]])
+        else:
+            clients, records = _tracked_clients(api)
+            record = records.get(pub, {})
+            if record.get("expires_at"):
+                show("У клиента <b>%s</b> уже задан срок до %s." %
+                     (api["e"](client["name"]), _date(int(record["expires_at"]))),
+                     [[api["btn"]("↩️ К срокам", "mod:l:expiring")]])
+            else:
+                show("На сколько дней выдать доступ клиенту <b>%s</b>?" % api["e"](client["name"]),
+                     _assign_days_keyboard(api, pub))
+    elif action.startswith("ad:"):
+        parts = action[3:].rsplit(":", 1)
+        if len(parts) != 2 or not parts[1].isdigit():
+            show("Не удалось разобрать срок.", [[api["btn"]("↩️ К списку", "mod:l:assign:0")]])
+        else:
+            _assign_access(api, chat, mid, parts[0], int(parts[1]))
     elif action == "unused":
         show(*_unused_view(api))
     elif action.startswith("extend:"):
@@ -399,7 +500,7 @@ def tick(api):
             expired_notifications.append(client["name"])
             _save_state()
     for name in expired_notifications:
-        api["notify_admins"]("⌛ Временный доступ <b>%s</b> истёк. Клиент отключён, конфиг сохранён." % api["e"](name))
+        api["notify_admins"]("⌛ Срок доступа <b>%s</b> истёк. Клиент отключён, конфиг сохранён." % api["e"](name))
 
 
 def on_event(api, event, *args):
