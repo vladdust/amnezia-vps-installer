@@ -1,0 +1,18 @@
+{
+  "id": "client-lifecycle",
+  "name": "Сроки доступа и неактивные конфиги",
+  "version": "1.2.0",
+  "description": "Управление обычными и временными клиентами через кнопки бота; проверка неактивных конфигов.",
+  "files": [
+    {
+      "source": "bot_module.py",
+      "target": "/opt/vpn-bot/modules/client-lifecycle/bot_module.py",
+      "mode": "0640"
+    }
+  ],
+  "services": {
+    "restart_on_change": [
+      "vpn-bot.service"
+    ]
+  }
+}
