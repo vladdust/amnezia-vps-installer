@@ -41,13 +41,3 @@ vpn-bot-module rollback <имя-модуля>
 ```
 
 Модули могут добавлять возможности Telegram-бота, серверные файлы и systemd-службы. Для новых модулей используется каталог `modules/catalog` этого репозитория.
-
-## Бот для существующей 3x-ui
-
-Можно установить отдельного Telegram-бота для уже работающей панели 3x-ui. Он использует API панели и не меняет Amnezia-бота или установку 3x-ui.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/vladdust/amnezia-vps-installer/main/install-3xui-bot.sh | sudo bash
-```
-
-Установщик запросит URL панели, API-токен, токен Telegram-бота и ID администратора. Подробности: [`3x-ui-bot.md`](3x-ui-bot.md).
