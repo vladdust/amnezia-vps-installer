@@ -2,9 +2,9 @@
 set -Eeuo pipefail
 set +x
 
-# Add the modular bot loader and client-lifecycle module to an existing
-# Amnezia Server Kit installation. This deliberately does not run the full
-# Server Kit or touch firewall, Docker, AmneziaWG, or CyberOK configuration.
+# Add the modular bot loader and bot modules to an existing Amnezia Server Kit
+# installation. The network filter is installed stopped and changes no firewall
+# rules until an administrator enables it in the bot.
 
 BOT="/opt/vpn-bot/bot.py"
 CONFIG="/etc/vpn-bot/config.json"
@@ -40,6 +40,9 @@ if command -v vpn-bot-module >/dev/null 2>&1; then
 
 Если модуль ещё не установлен, вместо upgrade выполни:
   sudo vpn-bot-module install client-lifecycle
+
+Сетевой фильтр и его вкладку в разделе «Состояние» установи отдельным скриптом:
+  curl -fsSL https://raw.githubusercontent.com/vladdust/amnezia-vps-installer/main/install-network-guard.sh | sudo bash
 EOF
     exit 0
 fi
@@ -103,6 +106,14 @@ allowed = {
     "modules/patch-bot-loader.py",
     "modules/catalog/client-lifecycle/manifest.json",
     "modules/catalog/client-lifecycle/bot_module.py",
+    "modules/catalog/as-network-guard/manifest.json",
+    "modules/catalog/as-network-guard/bot_module.py",
+    "modules/catalog/as-network-guard/network_guard.py",
+    "modules/catalog/as-network-guard/as-network-guard.service",
+    "modules/catalog/as-network-guard/as-network-guard-refresh.service",
+    "modules/catalog/as-network-guard/as-network-guard-refresh.timer",
+    "modules/catalog/as-network-guard/as-network-guard-snapshot.service",
+    "modules/catalog/as-network-guard/as-network-guard-snapshot.timer",
 }
 found = set()
 expanded = 0
@@ -135,7 +146,8 @@ PY
 PATCHER="$SOURCE/modules/patch-bot-loader.py"
 MANAGER="$SOURCE/modules/vpn-bot-module"
 CATALOG="$SOURCE/modules/catalog/client-lifecycle"
-python3 -m py_compile "$PATCHER" "$MANAGER" "$CATALOG/bot_module.py" || die "Проверка Python-файлов не пройдена. Сервер не изменён."
+SCAN_CATALOG="$SOURCE/modules/catalog/as-network-guard"
+python3 -m py_compile "$PATCHER" "$MANAGER" "$CATALOG/bot_module.py" "$SCAN_CATALOG/bot_module.py" "$SCAN_CATALOG/network_guard.py" || die "Проверка Python-файлов не пройдена. Сервер не изменён."
 
 # Preflight the exact bot patch on a temporary copy. The patcher refuses to
 # write unless every expected insertion point is present exactly once.
@@ -157,6 +169,11 @@ install -o root -g root -m 0750 "$MANAGER" /usr/local/sbin/vpn-bot-module
 install -d -o root -g root -m 0750 /opt/vpn-bot/module-catalog/client-lifecycle
 install -o root -g root -m 0640 "$CATALOG/manifest.json" /opt/vpn-bot/module-catalog/client-lifecycle/manifest.json
 install -o root -g root -m 0640 "$CATALOG/bot_module.py" /opt/vpn-bot/module-catalog/client-lifecycle/bot_module.py
+install -d -o root -g root -m 0750 /opt/vpn-bot/module-catalog/as-network-guard
+cp -a "$SCAN_CATALOG/." /opt/vpn-bot/module-catalog/as-network-guard/
+chown -R root:root /opt/vpn-bot/module-catalog/as-network-guard
+find /opt/vpn-bot/module-catalog/as-network-guard -type d -exec chmod 0750 {} +
+find /opt/vpn-bot/module-catalog/as-network-guard -type f -exec chmod 0640 {} +
 
 if ! python3 "$PATCHER" "$BOT"; then
     install -o "$BOT_UID" -g "$BOT_GID" -m "$BOT_MODE" "$BACKUP" "$BOT"
@@ -169,7 +186,14 @@ if ! /usr/local/sbin/vpn-bot-module install client-lifecycle; then
     die "Модуль не установился. Оригинальный bot.py восстановлен; менеджер оставлен для диагностики. Резервная копия: $BACKUP"
 fi
 
-printf '\nГотово. Установлены менеджер модулей и функции управления сроками доступа.\n'
+if ! /usr/local/sbin/vpn-bot-module install as-network-guard; then
+    install -o "$BOT_UID" -g "$BOT_GID" -m "$BOT_MODE" "$BACKUP" "$BOT"
+    systemctl restart "$SERVICE" || true
+    die "Сетевой модуль не установился. bot.py восстановлен; резервная копия: $BACKUP"
+fi
+
+printf '\nГотово. Установлены менеджер модулей, управление сроками и вкладка сетевого фильтра.\n'
+printf 'Фильтр в разделе «Состояние» выключен до отдельного нажатия кнопки включения.\n'
 printf 'Резервная копия bot.py: %s\n' "$BACKUP"
 printf 'Проверка: sudo vpn-bot-module list\n'
 printf 'Для будущих функций: sudo vpn-bot-module refresh, затем install/upgrade <модуль>.\n'
