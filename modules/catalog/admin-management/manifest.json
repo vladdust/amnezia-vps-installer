@@ -1,0 +1,18 @@
+{
+  "id": "admin-management",
+  "name": "Управление администраторами",
+  "version": "1.0.0",
+  "description": "Добавление администратора Telegram через кнопки бота.",
+  "files": [
+    {
+      "source": "bot_module.py",
+      "target": "/opt/vpn-bot/modules/admin-management/bot_module.py",
+      "mode": "0640"
+    }
+  ],
+  "services": {
+    "restart_on_change": [
+      "vpn-bot.service"
+    ]
+  }
+}
