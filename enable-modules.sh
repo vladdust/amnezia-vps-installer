@@ -41,6 +41,9 @@ if command -v vpn-bot-module >/dev/null 2>&1; then
 Если модуль ещё не установлен, вместо upgrade выполни:
   sudo vpn-bot-module install client-lifecycle
 
+Управление администраторами установи отдельным скриптом:
+  curl -fsSL https://raw.githubusercontent.com/vladdust/amnezia-vps-installer/main/install-admin-management.sh | sudo bash
+
 Сетевой фильтр и его вкладку в разделе «Состояние» установи отдельным скриптом:
   curl -fsSL https://raw.githubusercontent.com/vladdust/amnezia-vps-installer/main/install-network-guard.sh | sudo bash
 EOF
@@ -114,6 +117,9 @@ allowed = {
     "modules/catalog/as-network-guard/as-network-guard-refresh.timer",
     "modules/catalog/as-network-guard/as-network-guard-snapshot.service",
     "modules/catalog/as-network-guard/as-network-guard-snapshot.timer",
+    "modules/catalog/admin-management/manifest.json",
+    "modules/catalog/admin-management/README.md",
+    "modules/catalog/admin-management/bot_module.py",
 }
 found = set()
 expanded = 0
@@ -174,6 +180,13 @@ cp -a "$SCAN_CATALOG/." /opt/vpn-bot/module-catalog/as-network-guard/
 chown -R root:root /opt/vpn-bot/module-catalog/as-network-guard
 find /opt/vpn-bot/module-catalog/as-network-guard -type d -exec chmod 0750 {} +
 find /opt/vpn-bot/module-catalog/as-network-guard -type f -exec chmod 0640 {} +
+ADMIN_CATALOG="$SOURCE/modules/catalog/admin-management"
+[ -f "$ADMIN_CATALOG/manifest.json" ] || die "В пакете нет каталога управления администраторами."
+install -d -o root -g root -m 0750 /opt/vpn-bot/module-catalog/admin-management
+cp -a "$ADMIN_CATALOG/." /opt/vpn-bot/module-catalog/admin-management/
+chown -R root:root /opt/vpn-bot/module-catalog/admin-management
+find /opt/vpn-bot/module-catalog/admin-management -type d -exec chmod 0750 {} +
+find /opt/vpn-bot/module-catalog/admin-management -type f -exec chmod 0640 {} +
 
 if ! python3 "$PATCHER" "$BOT"; then
     install -o "$BOT_UID" -g "$BOT_GID" -m "$BOT_MODE" "$BACKUP" "$BOT"
@@ -192,7 +205,13 @@ if ! /usr/local/sbin/vpn-bot-module install as-network-guard; then
     die "Сетевой модуль не установился. bot.py восстановлен; резервная копия: $BACKUP"
 fi
 
-printf '\nГотово. Установлены менеджер модулей, управление сроками и вкладка сетевого фильтра.\n'
+if ! /usr/local/sbin/vpn-bot-module install admin-management; then
+    install -o "$BOT_UID" -g "$BOT_GID" -m "$BOT_MODE" "$BACKUP" "$BOT"
+    systemctl restart "$SERVICE" || true
+    die "Управление администраторами не установилось. bot.py восстановлен; резервная копия: $BACKUP"
+fi
+
+printf '\nГотово. Установлены менеджер модулей, управление сроками, сетевой фильтр и экран администраторов.\n'
 printf 'Фильтр в разделе «Состояние» выключен до отдельного нажатия кнопки включения.\n'
 printf 'Резервная копия bot.py: %s\n' "$BACKUP"
 printf 'Проверка: sudo vpn-bot-module list\n'
