@@ -59,6 +59,21 @@ def _module_dashboard():
     return "\n\n".join(lines), keyboard
 
 
+def _module_status_buttons():
+    rows = []
+    api = _module_api()
+    for plugin in BOT_MODULES.values():
+        handler = getattr(plugin, "status_button", None)
+        if handler:
+            try:
+                row = handler(api)
+                if row:
+                    rows.append(row)
+            except Exception:
+                log("module status button %s: %s" % (getattr(plugin, "MODULE_KEY", "?"), traceback.format_exc()))
+    return rows
+
+
 def _dispatch_module_callback(cq, data, chat, mid):
     if data == "modules":
         edit(chat, mid, *_module_dashboard())
@@ -180,6 +195,17 @@ def update_client_menu(source):
     return source
 
 
+def update_status_menu(source):
+    anchor = '    return "\\n".join(lines), [[btn("🔄 Обновить", "status")], BACK]'
+    replacement = ('    status_kb = [[btn("🔄 Обновить", "status")]]\n'
+                   '    status_kb.extend(_module_status_buttons())\n'
+                   '    status_kb.append(BACK)\n'
+                   '    return "\\n".join(lines), status_kb')
+    if replacement not in source:
+        source = replace_once(source, anchor, replacement, "кнопки в меню состояния")
+    return source
+
+
 def main():
     if len(sys.argv) != 2:
         raise SystemExit("Usage: patch-bot-loader.py /opt/vpn-bot/bot.py")
@@ -202,8 +228,9 @@ def main():
             'def main():\n    _load_bot_modules()\n    if not CFG.get("token"):', "запуск бота")
 
     source = update_client_menu(source)
+    source = update_status_menu(source)
     if source == path.read_text(encoding="utf-8"):
-        print("Кнопки функций уже находятся в меню клиентов.")
+        print("Кнопки функций уже находятся в меню бота.")
         return
 
     fd, temporary = tempfile.mkstemp(prefix=".bot.py.", dir=str(path.parent))
