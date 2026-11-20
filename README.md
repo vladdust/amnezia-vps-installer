@@ -64,12 +64,3 @@ curl -fsSL https://raw.githubusercontent.com/vladdust/amnezia-vps-installer/main
 curl -fsSL https://raw.githubusercontent.com/vladdust/amnezia-vps-installer/main/install-admin-management.sh | sudo bash
 ```
 
-## Отдельный бот для существующей 3x-ui
-
-Для уже установленной панели доступен самостоятельный Telegram-бот. Он работает в отдельной systemd-службе, управляет клиентами через API 3x-ui и не меняет Amnezia Server Kit или саму панель.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/vladdust/amnezia-vps-installer/main/install-3xui-bot.sh | sudo bash
-```
-
-Описание и список кнопок: [`3x-ui-bot/README.md`](3x-ui-bot/README.md).
