@@ -1,0 +1,16 @@
+[Unit]
+Description=Amnezia bot network filter from C24Be lists
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/local/lib/vpn-bot/modules/as-network-guard/network_guard.py apply
+ExecStop=/usr/bin/python3 /usr/local/lib/vpn-bot/modules/as-network-guard/network_guard.py remove
+TimeoutStartSec=120
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

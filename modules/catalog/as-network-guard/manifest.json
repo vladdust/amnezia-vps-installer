@@ -1,0 +1,58 @@
+{
+  "id": "as-network-guard",
+  "name": "Блокировка сетей госорганизаций и VK",
+  "version": "1.0.0",
+  "description": "Входящие сети C24Be, исходящие сети VK/Max/OK, статистика в меню состояния бота.",
+  "files": [
+    {
+      "source": "bot_module.py",
+      "target": "/opt/vpn-bot/modules/as-network-guard/bot_module.py",
+      "mode": "0640"
+    },
+    {
+      "source": "network_guard.py",
+      "target": "/usr/local/lib/vpn-bot/modules/as-network-guard/network_guard.py",
+      "mode": "0750"
+    },
+    {
+      "source": "as-network-guard.service",
+      "target": "/etc/systemd/system/as-network-guard.service",
+      "mode": "0644"
+    },
+    {
+      "source": "as-network-guard-refresh.service",
+      "target": "/etc/systemd/system/as-network-guard-refresh.service",
+      "mode": "0644"
+    },
+    {
+      "source": "as-network-guard-refresh.timer",
+      "target": "/etc/systemd/system/as-network-guard-refresh.timer",
+      "mode": "0644"
+    },
+    {
+      "source": "as-network-guard-snapshot.service",
+      "target": "/etc/systemd/system/as-network-guard-snapshot.service",
+      "mode": "0644"
+    },
+    {
+      "source": "as-network-guard-snapshot.timer",
+      "target": "/etc/systemd/system/as-network-guard-snapshot.timer",
+      "mode": "0644"
+    }
+  ],
+  "services": {
+    "enable_on_install": [
+      "as-network-guard.service",
+      "as-network-guard-refresh.timer",
+      "as-network-guard-snapshot.timer"
+    ],
+    "restart_on_change": [
+      "vpn-bot.service"
+    ],
+    "disable_on_uninstall": [
+      "as-network-guard-refresh.timer",
+      "as-network-guard-snapshot.timer",
+      "as-network-guard.service"
+    ]
+  }
+}

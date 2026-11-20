@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily refresh of C24Be network lists
+
+[Timer]
+OnBootSec=2min
+OnCalendar=daily
+Persistent=true
+Unit=as-network-guard-refresh.service
+
+[Install]
+WantedBy=timers.target

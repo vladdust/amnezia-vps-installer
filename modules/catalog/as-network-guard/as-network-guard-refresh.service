@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh C24Be network lists for the Amnezia bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/vpn-bot/modules/as-network-guard/network_guard.py refresh
+TimeoutStartSec=180

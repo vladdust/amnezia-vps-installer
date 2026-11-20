@@ -1,0 +1,7 @@
+[Unit]
+Description=Save Amnezia bot network filter counters
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/vpn-bot/modules/as-network-guard/network_guard.py snapshot
+TimeoutStartSec=60

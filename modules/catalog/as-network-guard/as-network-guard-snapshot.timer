@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic snapshot of network filter counters
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=as-network-guard-snapshot.service
+
+[Install]
+WantedBy=timers.target
