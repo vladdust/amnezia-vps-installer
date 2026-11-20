@@ -11,11 +11,42 @@ BOT_MODULES = {}
 BOT_MODULES_DIR = "/opt/vpn-bot/modules"
 
 
+def _module_admin_ids():
+    return sorted(ADMINS)
+
+
+def _module_is_admin(user_id):
+    try:
+        return int(user_id) in ADMINS
+    except (TypeError, ValueError):
+        return False
+
+
+def _module_add_admin(user_id):
+    value = str(user_id).strip()
+    if not value.isascii() or not value.isdigit() or len(value) > 16 or int(value) <= 0:
+        raise ValueError("Telegram ID должен быть положительным числом")
+    uid = int(value)
+    if uid in ADMINS:
+        return False
+    ADMINS.add(uid)
+    try:
+        save_cfg()
+    except Exception:
+        ADMINS.discard(uid)
+        raise
+    log("admin added:", uid)
+    return True
+
+
 def _module_api():
     names = ("send", "edit", "btn", "e", "get_clients", "find_client", "create_client", "do_add",
              "delete_client", "set_blocked", "is_blocked", "save_cfg", "send_client_conf",
              "notify_admins", "ag_sync", "view_menu", "time", "os", "json")
-    return {name: globals()[name] for name in names if name in globals()}
+    api = {name: globals()[name] for name in names if name in globals()}
+    api.update({"admin_ids": _module_admin_ids, "is_admin": _module_is_admin,
+                "add_admin": _module_add_admin})
+    return api
 
 
 def _load_bot_modules():
@@ -71,6 +102,21 @@ def _module_status_buttons():
                     rows.append(row)
             except Exception:
                 log("module status button %s: %s" % (getattr(plugin, "MODULE_KEY", "?"), traceback.format_exc()))
+    return rows
+
+
+def _module_main_buttons():
+    rows = []
+    api = _module_api()
+    for plugin in BOT_MODULES.values():
+        handler = getattr(plugin, "main_button", None)
+        if handler:
+            try:
+                row = handler(api)
+                if row:
+                    rows.append(row)
+            except Exception:
+                log("module main button %s: %s" % (getattr(plugin, "MODULE_KEY", "?"), traceback.format_exc()))
     return rows
 
 
@@ -206,6 +252,19 @@ def update_status_menu(source):
     return source
 
 
+def update_main_menu(source):
+    replacement = ('def view_menu():\n'
+                   '    menu_kb = [row[:] for row in MAIN_KB]\n'
+                   '    menu_kb.extend(_module_main_buttons())\n'
+                   '    return "<b>🛡 Панель VPN-сервера</b>\\nВыберите раздел:", menu_kb')
+    if replacement not in source:
+        source = replace_once(source,
+            'def view_menu():\n'
+            '    return "<b>🛡 Панель VPN-сервера</b>\\nВыберите раздел:", MAIN_KB',
+            replacement, "кнопка главного меню модулей")
+    return source
+
+
 def main():
     if len(sys.argv) != 2:
         raise SystemExit("Usage: patch-bot-loader.py /opt/vpn-bot/bot.py")
@@ -229,6 +288,7 @@ def main():
 
     source = update_client_menu(source)
     source = update_status_menu(source)
+    source = update_main_menu(source)
     if source == path.read_text(encoding="utf-8"):
         print("Кнопки функций уже находятся в меню бота.")
         return
